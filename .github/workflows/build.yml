@@ -1,0 +1,81 @@
+name: Build bootc image
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+  schedule:
+    # Weekly rebuild to pick up upstream base image / package updates
+    - cron: '00 06 * * 1'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ${{ github.event.repository.name }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase image registry path
+        id: registry_case
+        run: |
+          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate tags
+        id: generate-tags
+        run: |
+          echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        id: build_image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ steps.registry_case.outputs.image }}
+          tags: |
+            latest
+            ${{ steps.generate-tags.outputs.date }}
+            ${{ github.sha }}
+          containerfiles: |
+            ./Containerfile
+          oci: true
+
+      - name: Log in to GHCR
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ steps.registry_case.outputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image to GHCR
+        id: push
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build_image.outputs.image }}
+          tags: ${{ steps.build_image.outputs.tags }}
+          registry: ${{ steps.registry_case.outputs.registry }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          REPO: ${{ steps.registry_case.outputs.registry }}/${{ steps.registry_case.outputs.image }}
+        run: |
+          cosign sign -y "${REPO}@${DIGEST}"

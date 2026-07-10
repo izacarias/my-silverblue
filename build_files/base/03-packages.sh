@@ -6,7 +6,7 @@ set -ouex pipefail
 
 # DNF-related operations should be done here whenever possible
 
-FEDORA_PACKAGES = (
+FEDORA_PACKAGES=(
      adw-gtk3-theme
      adwaita-fonts-all
      alsa-firmware

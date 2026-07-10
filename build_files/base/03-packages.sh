@@ -56,8 +56,21 @@ FEDORA_PACKAGES=(
      zsh
 )
 
+echo "Disable CISCO OpenH264 Repository"
+#dnf config-manager --set-disabled fedora-cisco-openh264
+sed -i 's/enabled=1/enabled=0/' /etc/yum.repos.d/fedora-cisco-openh264.repo
+
+echo "Replace OpenH264 by noopenh264"
+dnf swap '*openh264*' noopenh264 --allowerasing -y
+
+echo "Install RPM Fusion"
+dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-44.noarch.rpm
+
+echo "Replace limited ffmpeg-free with ffmpeg from RPM Fusion"
+dnf swap ffmpeg-free ffmpeg --allowerasing -y
+
 # Install Fedora, Tailscale, and multimedia packages together while keeping COPR packages isolated.
-echo "Installing ${#FEDORA_PACKAGES[@]} Fedora packages plus Tailscale and multimedia packages..."
+echo "Installing ${#FEDORA_PACKAGES[@]} Fedora packages and multimedia packages..."
 # dnf5 config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
 # dnf5 config-manager setopt tailscale-stable.enabled=0
 dnf5 -y install \
@@ -74,5 +87,10 @@ dnf5 -y install \
 #    Workaround pkcs11-provider regression, see issue #1943
 #    rpm-ostree override replace https://bodhi.fedoraproject.org/updates/FEDORA-2024-dd2e9fb225
 #fi
+
+echo "Installing Intel drivers"
+dnf install -y libva-mesa-driver -y
+dnf swap mesa-va-drivers mesa-va-drivers-freeworld -y
+dnf swap mesa-vdpau-drivers mesa-vdpau-drivers-freeworld -y
 
 echo "::end_group:: ===$(basename "$0")==="

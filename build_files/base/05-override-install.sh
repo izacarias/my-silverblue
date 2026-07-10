@@ -2,82 +2,38 @@
 
 echo "::group:: ===$(basename "$0")==="
 
-set -ouex pipefail
+set -eoux pipefail
 
-# All DNF-related operations should be done here whenever possible
+# We do not need anything here at all
+rm -rf /usr/src
+rm -rf /usr/share/doc
+# Remove kernel-devel from rpmdb because all package files are removed from /usr/src
+rpm --erase --nodeps kernel-devel
 
-# shellcheck source=build_files/shared/copr-helpers.sh
-source /ctx/build_files/shared/copr-helpers.sh
-# shellcheck source=build_files/shared/package-lib.sh
-source /ctx/build_files/shared/package-lib.sh
+# Footgun, See: https://github.com/ublue-os/main/issues/598
+rm -f /usr/bin/chsh /usr/bin/lchsh
 
-READ_PKGS="python3 /ctx/build_files/shared/read-packages"
-PKGS_TOML="/ctx/build_files/packages/base.toml"
+# Add linuxbrew to the list of paths usable by `sudo`
+# not a sudoers.d override because we want to get updates from upstream and not break everything
+sed -Ei "s/secure_path = (.*)/secure_path = \1:\/home\/linuxbrew\/.linuxbrew\/bin/" /etc/sudoers
 
-# use negativo17 for 3rd party packages with higher priority than default
-# mitigate upstream packaging bug: https://bugzilla.redhat.com/show_bug.cgi?id=2332429
-# swap the incorrectly installed OpenCL-ICD-Loader for ocl-icd, the expected package
-# TODO: remove me when F42 dropped, F43 is not affected
-if [[ "$(rpm -E %fedora)" == "42" ]]; then
-    dnf5 -y swap --repo='fedora' \
-        OpenCL-ICD-Loader ocl-icd
-fi
+# https://github.com/ublue-os/main/pull/334
+ln -s "/usr/share/fonts/google-noto-sans-cjk-fonts" "/usr/share/fonts/noto-cjk"
 
-if ! grep -q fedora-multimedia <(dnf5 repolist); then
-    # Enable or Install Repofile
-    dnf5 config-manager setopt fedora-multimedia.enabled=1 ||
-        dnf5 config-manager addrepo --from-repofile="https://negativo17.org/repos/fedora-multimedia.repo"
-fi
-# Set higher priority
-dnf5 config-manager setopt fedora-multimedia.priority=90
+# use CoreOS' generator for emergency/rescue boot
+# see detail: https://github.com/ublue-os/main/issues/653
+mkdir -p /usr/lib/systemd/system-generators
+ghcurl "https://raw.githubusercontent.com/coreos/fedora-coreos-config/refs/heads/stable/overlay.d/05core/usr/lib/systemd/system-generators/coreos-sulogin-force-generator" --retry 3 -Lo /usr/lib/systemd/system-generators/coreos-sulogin-force-generator
+chmod +x /usr/lib/systemd/system-generators/coreos-sulogin-force-generator
 
-# use override to replace mesa and others with less crippled versions
-readarray -t OVERRIDES < <($READ_PKGS "$PKGS_TOML" multimedia_overrides)
-dnf5 distro-sync --skip-unavailable -y --repo='fedora-multimedia' "${OVERRIDES[@]}"
-dnf5 versionlock add "${OVERRIDES[@]}"
+# Configure firewalld with Fedora Workstation defaults
+# https://src.fedoraproject.org/rpms/firewalld/blob/rawhide/f/firewalld.spec
+ghcurl "https://src.fedoraproject.org/rpms/firewalld/raw/rawhide/f/FedoraWorkstation.xml" --retry 3 -Lo /usr/lib/firewalld/zones/FedoraWorkstation.xml
+grep -F -e '<port protocol="udp" port="1025-65535"/>' /usr/lib/firewalld/zones/FedoraWorkstation.xml
+sed -i 's|^DefaultZone=.*|DefaultZone=FedoraWorkstation|g' /etc/firewalld/firewalld.conf
+sed -i 's|^IPv6_rpfilter=.*|IPv6_rpfilter=loose|g' /etc/firewalld/firewalld.conf
 
-# NOTE:
-# Packages are split into FEDORA_PACKAGES and COPR_PACKAGES to prevent
-# malicious COPRs from injecting fake versions of Fedora packages.
-# Fedora packages are installed first in bulk (safe).
-# COPR packages are installed individually with isolated enablement.
-
-# Base packages from Fedora repos — common to all versions
-readarray -t FEDORA_PACKAGES < <($READ_PKGS "$PKGS_TOML" fedora)
-
-# Version-specific additions
-readarray -t _ver_pkgs < <($READ_PKGS "$PKGS_TOML" "fedora_v${FEDORA_MAJOR_VERSION}" 2>/dev/null || true)
-FEDORA_PACKAGES+=("${_ver_pkgs[@]}")
-
-# Install Fedora, Tailscale, and multimedia packages together while keeping COPR packages isolated.
-echo "Installing ${#FEDORA_PACKAGES[@]} Fedora packages plus Tailscale and multimedia packages..."
-dnf5 config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
-dnf5 config-manager setopt tailscale-stable.enabled=0
-dnf5 -y install \
-    --enablerepo='tailscale-stable' \
-    --enablerepo='fedora-multimedia' \
-    -x PackageKit* \
-    "${FEDORA_PACKAGES[@]}" \
-    tailscale \
-    ffmpeg{,-libs} libavcodec @multimedia gstreamer1-plugins-{bad-free,bad-free-libs,good,base} lame{,-libs} libfdk-aac libjxl ffmpegthumbnailer
-
-# From ublue-os/packages
-copr_install_isolated "ublue-os/packages" \
-    "uupd"
-
-# Packages to exclude — conflicts with or replaced by image content
-# shellcheck disable=SC2034  # passed by name to remove_excluded_packages
-readarray -t EXCLUDED_PACKAGES < <($READ_PKGS "$PKGS_TOML" excluded)
-remove_excluded_packages EXCLUDED_PACKAGES
-
-## Pins and Overrides
-## Use this section to pin packages in order to avoid regressions
-# Remember to leave a note with rationale/link to issue for each pin!
-#
-# Example:
-#if [ "$FEDORA_MAJOR_VERSION" -eq "41" ]; then
-#    Workaround pkcs11-provider regression, see issue #1943
-#    rpm-ostree override replace https://bodhi.fedoraproject.org/updates/FEDORA-2024-dd2e9fb225
-#fi
+# Rebuild gdk-pixbuf loader cache so all installed loaders are registered
+gdk-pixbuf-query-loaders-64 --update-cache
 
 echo "::endgroup::"

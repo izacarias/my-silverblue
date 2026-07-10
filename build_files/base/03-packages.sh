@@ -75,6 +75,7 @@ echo "Installing ${#FEDORA_PACKAGES[@]} Fedora packages and multimedia packages.
 # dnf5 config-manager setopt tailscale-stable.enabled=0
 dnf5 -y install \
     -x PackageKit* \
+    --skip-unavailable \
     "${FEDORA_PACKAGES[@]}" \
     ffmpeg{,-libs} libavcodec @multimedia gstreamer1-plugins-{bad-free,bad-free-libs,good,base} lame{,-libs} libfdk-aac libjxl ffmpegthumbnailer
 

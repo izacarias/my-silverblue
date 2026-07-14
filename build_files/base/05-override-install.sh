@@ -8,7 +8,7 @@ set -eoux pipefail
 rm -rf /usr/src
 rm -rf /usr/share/doc
 # Remove kernel-devel from rpmdb because all package files are removed from /usr/src
-rpm --erase --nodeps kernel-devel
+# rpm -q kernel-devel && rpm -e kernel-devel || true
 
 # Footgun, See: https://github.com/ublue-os/main/issues/598
 rm -f /usr/bin/chsh /usr/bin/lchsh

@@ -26,8 +26,10 @@ RUN --mount=type=cache,dst=/var/cache/libdnf5 \
     bash -euo pipefail -c ' \
         dnf5 config-manager setopt keepcache=1 && \
         dnf5 config-manager setopt install_weak_deps=0 && \
+        /ctx/build_files/base/02-copy-files.sh && \
         /ctx/build_files/base/03-packages.sh && \
-        /ctx/build_files/base/05-override-install.sh \
+        /ctx/build_files/base/05-override-install.sh && \
+        /ctx/build_files/base/99-cleanup.sh \
     '
 
 # Makes `/opt` writeable by default

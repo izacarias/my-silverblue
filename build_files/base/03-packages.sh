@@ -46,7 +46,6 @@ FEDORA_PACKAGES=(
      nautilus-gsconnect
      openrgb-udev-rules
      openssh-askpass
-     pipewire-libs-extra
      switcheroo-control
      waypipe
      wireguard-tools
@@ -56,18 +55,16 @@ FEDORA_PACKAGES=(
      zsh
 )
 
-echo "Disable CISCO OpenH264 Repository"
+echo "Disable OpenH264 Repository and install multimedia driver"
 #dnf config-manager --set-disabled fedora-cisco-openh264
-sed -i 's/enabled=1/enabled=0/' /etc/yum.repos.d/fedora-cisco-openh264.repo
-
-echo "Replace OpenH264 by noopenh264"
-dnf swap '*openh264*' noopenh264 --allowerasing -y
-
-echo "Install RPM Fusion"
-dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-44.noarch.rpm
-
-echo "Replace limited ffmpeg-free with ffmpeg from RPM Fusion"
-dnf swap ffmpeg-free ffmpeg --allowerasing -y
+sed -i 's/enabled=1/enabled=0/' /etc/yum.repos.d/fedora-cisco-openh264.repo && \
+    dnf -y swap '*openh264*' noopenh264 --allowerasing && \
+    dnf -y install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-44.noarch.rpm && \
+    dnf -y swap ffmpeg-free ffmpeg --allowerasing && \
+    dnf -y install \
+        -x PackageKit \
+	--setopt="install_weak_deps=False" \
+	@multimedia intel-media-driver libva-intel-driver 
 
 # Install Fedora, Tailscale, and multimedia packages together while keeping COPR packages isolated.
 echo "Installing ${#FEDORA_PACKAGES[@]} Fedora packages and multimedia packages..."
@@ -75,9 +72,8 @@ echo "Installing ${#FEDORA_PACKAGES[@]} Fedora packages and multimedia packages.
 # dnf5 config-manager setopt tailscale-stable.enabled=0
 dnf5 -y install \
     -x PackageKit* \
-    --skip-unavailable \
     "${FEDORA_PACKAGES[@]}" \
-    ffmpeg{,-libs} libavcodec @multimedia gstreamer1-plugins-{bad-free,bad-free-libs,good,base} lame{,-libs} libfdk-aac libjxl ffmpegthumbnailer
+    ffmpeg{,-libs} libavcodec-freeworld gstreamer1-plugins-{bad-free,bad-free-libs,good,base} lame{,-libs} libjxl ffmpegthumbnailer
 
 ## Pins and Overrides
 ## Use this section to pin packages in order to avoid regressions
@@ -89,9 +85,11 @@ dnf5 -y install \
 #    rpm-ostree override replace https://bodhi.fedoraproject.org/updates/FEDORA-2024-dd2e9fb225
 #fi
 
-echo "Installing Intel drivers"
-dnf install -y libva-mesa-driver -y
-dnf swap mesa-va-drivers mesa-va-drivers-freeworld -y
-dnf swap mesa-vdpau-drivers mesa-vdpau-drivers-freeworld -y
+# echo "Installing Intel drivers"
+# dnf swap mesa-va-drivers mesa-va-drivers-freeworld -y
+# dnf swap mesa-vdpau-drivers mesa-vdpau-drivers-freeworld -y
+
+echo "Remove DNF cache and temporary files"
+dnf clean all
 
 echo "::end_group:: ===$(basename "$0")==="
